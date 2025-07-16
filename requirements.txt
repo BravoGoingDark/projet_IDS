@@ -1,0 +1,10 @@
+flask
+flask-socketio
+flask-cors
+joblib
+pandas
+scikit-learn
+psutil
+smtplib-ssl
+
+

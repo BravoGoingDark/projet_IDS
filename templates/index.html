@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IDS Dashboard - Intrusion Detection System</title>
+  <link rel="stylesheet" href="/static/index.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>🛡️ IDS Monitoring Dashboard</h1>
+    
+    <!-- Main Stats Grid -->
+    <div class="stats">
+      <div class="box normal-box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            Normal Traffic
+          </div>
+          <div class="box-value" id="normal-count">0</div>
+          <div class="box-subtitle">Legitimate connections</div>
+        </div>
+      </div>
+      
+      <div class="box attack-box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-offline"></span>
+            Detected Attacks
+          </div>
+          <div class="box-value" id="attack-count">0</div>
+          <div class="box-subtitle">Malicious activities blocked</div>
+        </div>
+      </div>
+      
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            Detection Rate
+          </div>
+          <div class="box-value" id="detection-rate">100%</div>
+          <div class="box-subtitle">System accuracy</div>
+        </div>
+      </div>
+      
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            Predictions/Min
+          </div>
+          <div class="box-value" id="predictions-per-min">0</div>
+          <div class="box-subtitle">Real-time throughput</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server Monitoring Stats -->
+    <div class="stats">
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            CPU Usage
+          </div>
+          <div class="box-value" id="cpu-usage">0%</div>
+          <div class="box-subtitle">Server processing load</div>
+        </div>
+      </div>
+      
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            Memory Usage
+          </div>
+          <div class="box-value" id="memory-usage">0%</div>
+          <div class="box-subtitle">RAM utilization</div>
+        </div>
+      </div>
+      
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            Disk Usage
+          </div>
+          <div class="box-value" id="disk-usage">0%</div>
+          <div class="box-subtitle">Storage utilization</div>
+        </div>
+      </div>
+      
+      <div class="box">
+        <div class="box-content">
+          <div class="box-title">
+            <span class="status-indicator status-online"></span>
+            System Uptime
+          </div>
+          <div class="box-value" id="system-uptime">0h 0m</div>
+          <div class="box-subtitle">Continuous operation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+      <div class="chart-container">
+        <canvas id="trafficChart"></canvas>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="timelineChart"></canvas>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="systemChart"></canvas>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="attackAnalysisChart"></canvas>
+      </div>
+    </div>
+
+    <h2>📊 Recent Network Activity</h2>
+    <div class="logs-container">
+      <ul id="log-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let attackCount = 0;
+    let normalCount = 0;
+    let totalPackets = 0;
+    let timelineData = [];
+    let systemData = [];
+    let attackAnalysisData = { protocols: {}, services: {} };
+    let maxLogEntries = 50;
+
+    const logList = document.getElementById("log-list");
+    const normalSpan = document.getElementById("normal-count");
+    const attackSpan = document.getElementById("attack-count");
+    const detectionRateSpan = document.getElementById("detection-rate");
+    const predictionsPerMinSpan = document.getElementById("predictions-per-min");
+    const cpuUsageSpan = document.getElementById("cpu-usage");
+    const memoryUsageSpan = document.getElementById("memory-usage");
+    const diskUsageSpan = document.getElementById("disk-usage");
+    const systemUptimeSpan = document.getElementById("system-uptime");
+
+    // Traffic Distribution Chart (Doughnut)
+    const ctx = document.getElementById("trafficChart").getContext("2d");
+    const trafficChart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: ["Normal Traffic", "Attack Traffic"],
+        datasets: [{
+          label: "Network Traffic",
+          data: [0, 0],
+          backgroundColor: [
+            "rgba(16, 185, 129, 0.8)",
+            "rgba(239, 68, 68, 0.8)"
+          ],
+          borderColor: [
+            "rgba(16, 185, 129, 1)",
+            "rgba(239, 68, 68, 1)"
+          ],
+          borderWidth: 2,
+          hoverOffset: 10
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: {
+              color: "#f8fafc",
+              font: { family: "Inter", size: 14 },
+              padding: 20
+            }
+          },
+          title: {
+            display: true,
+            text: "Traffic Distribution",
+            color: "#f8fafc",
+            font: { family: "Inter", size: 18, weight: "600" },
+            padding: 20
+          }
+        }
+      }
+    });
+
+    // Timeline Chart (Line)
+    const timelineCtx = document.getElementById("timelineChart").getContext("2d");
+    const timelineChart = new Chart(timelineCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Normal Traffic",
+            data: [],
+            borderColor: "rgba(16, 185, 129, 1)",
+            backgroundColor: "rgba(16, 185, 129, 0.1)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: "Attack Traffic",
+            data: [],
+            borderColor: "rgba(239, 68, 68, 1)",
+            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "top",
+            labels: {
+              color: "#f8fafc",
+              font: { family: "Inter", size: 14 }
+            }
+          },
+          title: {
+            display: true,
+            text: "Traffic Timeline (Last 10 Minutes)",
+            color: "#f8fafc",
+            font: { family: "Inter", size: 18, weight: "600" }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          }
+        }
+      }
+    });
+
+    // System Monitoring Chart
+    const systemCtx = document.getElementById("systemChart").getContext("2d");
+    const systemChart = new Chart(systemCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "CPU Usage (%)",
+            data: [],
+            borderColor: "rgba(99, 102, 241, 1)",
+            backgroundColor: "rgba(99, 102, 241, 0.1)",
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: "Memory Usage (%)",
+            data: [],
+            borderColor: "rgba(139, 92, 246, 1)",
+            backgroundColor: "rgba(139, 92, 246, 0.1)",
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: "Disk Usage (%)",
+            data: [],
+            borderColor: "rgba(245, 158, 11, 1)",
+            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "top",
+            labels: {
+              color: "#f8fafc",
+              font: { family: "Inter", size: 14 }
+            }
+          },
+          title: {
+            display: true,
+            text: "System Resource Monitoring",
+            color: "#f8fafc",
+            font: { family: "Inter", size: 18, weight: "600" }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          },
+          y: {
+            beginAtZero: true,
+            max: 100,
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          }
+        }
+      }
+    });
+
+    // Attack Analysis Chart (Bar)
+    const attackCtx = document.getElementById("attackAnalysisChart").getContext("2d");
+    const attackAnalysisChart = new Chart(attackCtx, {
+      type: "bar",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Attack Count by Protocol",
+          data: [],
+          backgroundColor: "rgba(239, 68, 68, 0.8)",
+          borderColor: "rgba(239, 68, 68, 1)",
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "top",
+            labels: {
+              color: "#f8fafc",
+              font: { family: "Inter", size: 14 }
+            }
+          },
+          title: {
+            display: true,
+            text: "Attack Distribution by Protocol",
+            color: "#f8fafc",
+            font: { family: "Inter", size: 18, weight: "600" }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(51, 65, 85, 0.5)" },
+            ticks: { color: "#cbd5e1" }
+          }
+        }
+      }
+    });
+
+    function formatUptime(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    }
+
+    function updateDetectionRate() {
+      if (totalPackets > 0) {
+        const rate = ((normalCount / totalPackets) * 100).toFixed(1);
+        detectionRateSpan.textContent = rate + "%";
+      }
+    }
+
+    function updateTimeline() {
+      const now = new Date();
+      const currentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+      
+      let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
+      if (!dataPoint) {
+        dataPoint = { time: currentMinute, normal: 0, attacks: 0 };
+        timelineData.push(dataPoint);
+        
+        if (timelineData.length > 10) {
+          timelineData.shift();
+        }
+      }
+      
+      timelineChart.data.labels = timelineData.map(point => point.time.toLocaleTimeString());
+      timelineChart.data.datasets[0].data = timelineData.map(point => point.normal);
+      timelineChart.data.datasets[1].data = timelineData.map(point => point.attacks);
+      timelineChart.update('none');
+    }
+
+    function updateSystemChart(stats) {
+      const now = new Date();
+      systemData.push({
+        time: now,
+        cpu: stats.cpu,
+        memory: stats.memory,
+        disk: stats.disk
+      });
+
+      if (systemData.length > 20) {
+        systemData.shift();
+      }
+
+      systemChart.data.labels = systemData.map(point => point.time.toLocaleTimeString());
+      systemChart.data.datasets[0].data = systemData.map(point => point.cpu);
+      systemChart.data.datasets[1].data = systemData.map(point => point.memory);
+      systemChart.data.datasets[2].data = systemData.map(point => point.disk);
+      systemChart.update('none');
+    }
+
+    function updateAttackAnalysis(data) {
+      if (data.prediction === "attaque") {
+        const protocol = data.proto || "unknown";
+        attackAnalysisData.protocols[protocol] = (attackAnalysisData.protocols[protocol] || 0) + 1;
+
+        const protocols = Object.keys(attackAnalysisData.protocols);
+        const counts = Object.values(attackAnalysisData.protocols);
+
+        attackAnalysisChart.data.labels = protocols;
+        attackAnalysisChart.data.datasets[0].data = counts;
+        attackAnalysisChart.update('none');
+      }
+    }
+
+    function addLogEntry(data) {
+      const li = document.createElement("li");
+      li.className = data.prediction === "attaque" ? "attack" : "normal";
+      
+      const timestamp = new Date().toLocaleTimeString();
+      const icon = data.prediction === "attaque" ? "🚨" : "✅";
+      const status = data.prediction === "attaque" ? "BLOCKED" : "ALLOWED";
+      
+      li.innerHTML = `
+        <strong>${timestamp}</strong> ${icon} 
+        <span style="color: #cbd5e1;">${data.proto?.toUpperCase() || 'UNKNOWN'}</span> / 
+        <span style="color: #cbd5e1;">${data.service || 'unknown'}</span> → 
+        <strong>${status}</strong>
+      `;
+      
+      logList.prepend(li);
+      
+      while (logList.children.length > maxLogEntries) {
+        logList.removeChild(logList.lastChild);
+      }
+      
+      li.classList.add('pulse');
+      setTimeout(() => li.classList.remove('pulse'), 2000);
+    }
+
+    // Socket event handlers
+    socket.on("new_prediction", data => {
+      totalPackets++;
+      
+      if (data.prediction === "attaque") {
+        attackCount++;
+        const currentMinute = new Date();
+        currentMinute.setSeconds(0, 0);
+        let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
+        if (dataPoint) {
+          dataPoint.attacks++;
+        }
+      } else {
+        normalCount++;
+        const currentMinute = new Date();
+        currentMinute.setSeconds(0, 0);
+        let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
+        if (dataPoint) {
+          dataPoint.normal++;
+        }
+      }
+
+      normalSpan.textContent = normalCount.toLocaleString();
+      attackSpan.textContent = attackCount.toLocaleString();
+      updateDetectionRate();
+      
+      trafficChart.data.datasets[0].data = [normalCount, attackCount];
+      trafficChart.update('none');
+      
+      updateTimeline();
+      updateAttackAnalysis(data);
+      addLogEntry(data);
+    });
+
+    socket.on("system_stats", data => {
+      cpuUsageSpan.textContent = data.cpu.toFixed(1) + "%";
+      memoryUsageSpan.textContent = data.memory.toFixed(1) + "%";
+      diskUsageSpan.textContent = data.disk.toFixed(1) + "%";
+      systemUptimeSpan.textContent = formatUptime(data.uptime);
+      predictionsPerMinSpan.textContent = data.predictions_per_minute || 0;
+
+      updateSystemChart(data);
+    });
+
+    // Initialize timeline
+    function initializeTimeline() {
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const time = new Date(now.getTime() - i * 60000);
+        time.setSeconds(0, 0);
+        timelineData.push({ time, normal: 0, attacks: 0 });
+      }
+      updateTimeline();
+    }
+
+    // Simulate traffic for demonstration
+    function simulateTraffic() {
+      const protocols = ['tcp', 'udp', 'icmp'];
+      const services = ['http', 'https', 'ftp', 'smtp', 'dns'];
+      const flags = ['SF', 'REJ', 'S0', 'S1'];
+      
+      setInterval(() => {
+        const isAttack = Math.random() < 0.15;
+        const data = {
+          prediction: isAttack ? 'attaque' : 'normal',
+          proto: protocols[Math.floor(Math.random() * protocols.length)],
+          service: services[Math.floor(Math.random() * services.length)],
+          flag: flags[Math.floor(Math.random() * flags.length)]
+        };
+        
+        socket.emit('new_prediction', data);
+      }, 2000 + Math.random() * 3000);
+    }
+
+    // Initialize
+    initializeTimeline();
+    setTimeout(simulateTraffic, 2000);
+  </script>
+</body>
+</html>
+
