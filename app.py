@@ -208,6 +208,8 @@ monitoring_thread.start()
 def index():
     return render_template("index.html")
 
+import traceback
+
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
@@ -217,7 +219,6 @@ def predict():
         pred = model.predict(df)[0]
         src_ip = data.get("src_ip", "unknown")
         
-        # Store prediction
         prediction_data = {
             "prediction": pred,
             "proto": data.get("feature_1", "unknown"),
@@ -232,22 +233,21 @@ def predict():
         if len(recent_predictions) > MAX_RECENT_PREDICTIONS:
             recent_predictions.pop(0)
         
-        # Update counters
         server_stats["total_predictions"] += 1
         if pred == "attaque":
             server_stats["attack_count"] += 1
-            # Send email notification for attacks
             send_attack_email(prediction_data)
         else:
             server_stats["normal_count"] += 1
         
-        # Emit via WebSocket
         socketio.emit("new_prediction", prediction_data)
         
         return jsonify({"prediction": pred, "timestamp": prediction_data["timestamp"]})
         
     except Exception as e:
+        traceback.print_exc()   # ← Affiche la trace complète dans la console
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/stats", methods=["GET"])
 def get_stats():

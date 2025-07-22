@@ -129,6 +129,35 @@
       </div>
     </div>
 
+    <!-- Blocked IPs Section -->
+    <h2>🚫 IPs Bloquées</h2>
+    <div class="blocked-ips-container">
+      <div class="blocked-ips-header">
+        <div class="blocked-ips-stats">
+          <span class="blocked-count">Total: <span id="blocked-total">0</span></span>
+
+        </div>
+      </div>
+      <div class="blocked-ips-table-container">
+        <table id="blocked-ips-table" class="blocked-ips-table">
+          <thead>
+            <tr>
+              <th>Adresse IP</th>
+              <th>Date de blocage</th>
+              <th>Raison</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="blocked-ips-tbody">
+            <!-- Les IPs bloquées seront ajoutées ici dynamiquement -->
+          </tbody>
+        </table>
+        <div id="no-blocked-ips" class="no-data" style="display: none;">
+          <p>Aucune IP bloquée pour le moment</p>
+        </div>
+      </div>
+    </div>
+
     <h2>📊 Recent Network Activity</h2>
     <div class="logs-container">
       <ul id="log-list"></ul>
@@ -136,15 +165,15 @@
   </div>
 
   <script>
-    const socket = io();
+    const socket = io(  );
     let attackCount = 0;
     let normalCount = 0;
     let totalPackets = 0;
     let timelineData = [];
-    let systemData = [];
     let attackAnalysisData = { protocols: {}, services: {} };
     let maxLogEntries = 50;
 
+    // DOM Elements
     const logList = document.getElementById("log-list");
     const normalSpan = document.getElementById("normal-count");
     const attackSpan = document.getElementById("attack-count");
@@ -154,6 +183,11 @@
     const memoryUsageSpan = document.getElementById("memory-usage");
     const diskUsageSpan = document.getElementById("disk-usage");
     const systemUptimeSpan = document.getElementById("system-uptime");
+    const blockedTotalSpan = document.getElementById("blocked-total");
+    const blockedIpsTable = document.getElementById("blocked-ips-table");
+    const blockedIpsTbody = document.getElementById("blocked-ips-tbody");
+    const noBlockedIpsDiv = document.getElementById("no-blocked-ips");
+    const refreshBlockedIpsBtn = document.getElementById("refresh-blocked-ips");
 
     // Traffic Distribution Chart (Doughnut)
     const ctx = document.getElementById("trafficChart").getContext("2d");
@@ -164,14 +198,8 @@
         datasets: [{
           label: "Network Traffic",
           data: [0, 0],
-          backgroundColor: [
-            "rgba(16, 185, 129, 0.8)",
-            "rgba(239, 68, 68, 0.8)"
-          ],
-          borderColor: [
-            "rgba(16, 185, 129, 1)",
-            "rgba(239, 68, 68, 1)"
-          ],
+          backgroundColor: ["rgba(16, 185, 129, 0.8)", "rgba(239, 68, 68, 0.8)"],
+          borderColor: ["rgba(16, 185, 129, 1)", "rgba(239, 68, 68, 1)"],
           borderWidth: 2,
           hoverOffset: 10
         }]
@@ -180,21 +208,8 @@
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: "bottom",
-            labels: {
-              color: "#f8fafc",
-              font: { family: "Inter", size: 14 },
-              padding: 20
-            }
-          },
-          title: {
-            display: true,
-            text: "Traffic Distribution",
-            color: "#f8fafc",
-            font: { family: "Inter", size: 18, weight: "600" },
-            padding: 20
-          }
+          legend: { position: "bottom", labels: { color: "#f8fafc", font: { family: "Inter", size: 14 }, padding: 20 }},
+          title: { display: true, text: "Traffic Distribution", color: "#f8fafc", font: { family: "Inter", size: 18, weight: "600" }, padding: 20 }
         }
       }
     });
@@ -206,125 +221,48 @@
       data: {
         labels: [],
         datasets: [
-          {
-            label: "Normal Traffic",
-            data: [],
-            borderColor: "rgba(16, 185, 129, 1)",
-            backgroundColor: "rgba(16, 185, 129, 0.1)",
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4
-          },
-          {
-            label: "Attack Traffic",
-            data: [],
-            borderColor: "rgba(239, 68, 68, 1)",
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4
-          }
+          { label: "Normal Traffic", data: [], borderColor: "rgba(16, 185, 129, 1)", backgroundColor: "rgba(16, 185, 129, 0.1)", borderWidth: 3, fill: true, tension: 0.4 },
+          { label: "Attack Traffic", data: [], borderColor: "rgba(239, 68, 68, 1)", backgroundColor: "rgba(239, 68, 68, 0.1)", borderWidth: 3, fill: true, tension: 0.4 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: "top",
-            labels: {
-              color: "#f8fafc",
-              font: { family: "Inter", size: 14 }
-            }
-          },
-          title: {
-            display: true,
-            text: "Traffic Timeline (Last 10 Minutes)",
-            color: "#f8fafc",
-            font: { family: "Inter", size: 18, weight: "600" }
-          }
+          legend: { position: "top", labels: { color: "#f8fafc", font: { family: "Inter", size: 14 }}},
+          title: { display: true, text: "Traffic Timeline (Last 10 Minutes)", color: "#f8fafc", font: { family: "Inter", size: 18, weight: "600" }}
         },
         scales: {
-          x: {
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          }
+          x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' }}, grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1" }},
+          y: { beginAtZero: true, grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1" }}
         }
       }
     });
 
-    // System Monitoring Chart
+    // System Monitoring Chart (Line)
     const systemCtx = document.getElementById("systemChart").getContext("2d");
     const systemChart = new Chart(systemCtx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: "CPU Usage (%)",
-            data: [],
-            borderColor: "rgba(99, 102, 241, 1)",
-            backgroundColor: "rgba(99, 102, 241, 0.1)",
-            borderWidth: 2,
-            fill: true,
-            tension: 0.4
-          },
-          {
-            label: "Memory Usage (%)",
-            data: [],
-            borderColor: "rgba(139, 92, 246, 1)",
-            backgroundColor: "rgba(139, 92, 246, 0.1)",
-            borderWidth: 2,
-            fill: true,
-            tension: 0.4
-          },
-          {
-            label: "Disk Usage (%)",
-            data: [],
-            borderColor: "rgba(245, 158, 11, 1)",
-            backgroundColor: "rgba(245, 158, 11, 0.1)",
-            borderWidth: 2,
-            fill: true,
-            tension: 0.4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "top",
-            labels: {
-              color: "#f8fafc",
-              font: { family: "Inter", size: 14 }
-            }
-          },
-          title: {
-            display: true,
-            text: "System Resource Monitoring",
-            color: "#f8fafc",
-            font: { family: "Inter", size: 18, weight: "600" }
-          }
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [
+                { label: "CPU Usage (%)", data: [], borderColor: "rgba(99, 102, 241, 1)", backgroundColor: "rgba(99, 102, 241, 0.1)", borderWidth: 2, fill: true, tension: 0.4 },
+                { label: "Memory Usage (%)", data: [], borderColor: "rgba(139, 92, 246, 1)", backgroundColor: "rgba(139, 92, 246, 0.1)", borderWidth: 2, fill: true, tension: 0.4 },
+                { label: "Disk Usage (%)", data: [], borderColor: "rgba(245, 158, 11, 1)", backgroundColor: "rgba(245, 158, 11, 0.1)", borderWidth: 2, fill: true, tension: 0.4 }
+            ]
         },
-        scales: {
-          x: {
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          },
-          y: {
-            beginAtZero: true,
-            max: 100,
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: "top", labels: { color: "#f8fafc", font: { family: "Inter", size: 14 }}},
+                title: { display: true, text: "System Resource Monitoring", color: "#f8fafc", font: { family: "Inter", size: 18, weight: "600" }}
+            },
+            scales: {
+                x: { type: 'time', time: { unit: 'minute', tooltipFormat: 'HH:mm:ss', displayFormats: { minute: 'HH:mm' }}, grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1" }},
+                y: { beginAtZero: true, max: 100, grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1", callback: value => value + '%' }}
+            }
         }
-      }
     });
 
     // Attack Analysis Chart (Bar)
@@ -333,97 +271,71 @@
       type: "bar",
       data: {
         labels: [],
-        datasets: [{
-          label: "Attack Count by Protocol",
-          data: [],
-          backgroundColor: "rgba(239, 68, 68, 0.8)",
-          borderColor: "rgba(239, 68, 68, 1)",
-          borderWidth: 2
-        }]
+        datasets: [{ label: "Attack Count by Protocol", data: [], backgroundColor: "rgba(239, 68, 68, 0.8)", borderColor: "rgba(239, 68, 68, 1)", borderWidth: 2 }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: "top",
-            labels: {
-              color: "#f8fafc",
-              font: { family: "Inter", size: 14 }
-            }
-          },
-          title: {
-            display: true,
-            text: "Attack Distribution by Protocol",
-            color: "#f8fafc",
-            font: { family: "Inter", size: 18, weight: "600" }
-          }
+          legend: { display: false },
+          title: { display: true, text: "Attack Distribution by Protocol", color: "#f8fafc", font: { family: "Inter", size: 18, weight: "600" }}
         },
         scales: {
-          x: {
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: "rgba(51, 65, 85, 0.5)" },
-            ticks: { color: "#cbd5e1" }
-          }
+          x: { grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1" }},
+          y: { beginAtZero: true, grid: { color: "rgba(51, 65, 85, 0.5)" }, ticks: { color: "#cbd5e1" }}
         }
       }
     });
 
+    // --- Helper Functions ---
     function formatUptime(seconds) {
-      const hours = Math.floor(seconds / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      return `${hours}h ${minutes}m`;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return `${h}h ${m}m`;
     }
 
     function updateDetectionRate() {
       if (totalPackets > 0) {
-        const rate = ((normalCount / totalPackets) * 100).toFixed(1);
+        const rate = (100 - (attackCount / totalPackets) * 100).toFixed(1);
         detectionRateSpan.textContent = rate + "%";
       }
     }
 
     function updateTimeline() {
-      const now = new Date();
-      const currentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
-      
-      let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
-      if (!dataPoint) {
-        dataPoint = { time: currentMinute, normal: 0, attacks: 0 };
-        timelineData.push(dataPoint);
-        
-        if (timelineData.length > 10) {
-          timelineData.shift();
-        }
-      }
-      
-      timelineChart.data.labels = timelineData.map(point => point.time.toLocaleTimeString());
-      timelineChart.data.datasets[0].data = timelineData.map(point => point.normal);
-      timelineChart.data.datasets[1].data = timelineData.map(point => point.attacks);
-      timelineChart.update('none');
+        const now = new Date();
+        const tenMinutesAgo = now.getTime() - 10 * 60 * 1000;
+
+        // Filter out old data points
+        timelineData = timelineData.filter(p => p.time.getTime() > tenMinutesAgo);
+
+        // Update chart
+        timelineChart.data.labels = timelineData.map(p => p.time);
+        timelineChart.data.datasets[0].data = timelineData.map(p => p.normal);
+        timelineChart.data.datasets[1].data = timelineData.map(p => p.attacks);
+        timelineChart.update('none');
     }
-
+    
+    // --- CORRECTED System Chart Update Function ---
     function updateSystemChart(stats) {
-      const now = new Date();
-      systemData.push({
-        time: now,
-        cpu: stats.cpu,
-        memory: stats.memory,
-        disk: stats.disk
-      });
+        const now = new Date();
+        const chart = systemChart; // Use a direct reference
 
-      if (systemData.length > 20) {
-        systemData.shift();
-      }
+        // Add new data
+        chart.data.labels.push(now);
+        chart.data.datasets[0].data.push(stats.cpu);
+        chart.data.datasets[1].data.push(stats.memory);
+        chart.data.datasets[2].data.push(stats.disk);
 
-      systemChart.data.labels = systemData.map(point => point.time.toLocaleTimeString());
-      systemChart.data.datasets[0].data = systemData.map(point => point.cpu);
-      systemChart.data.datasets[1].data = systemData.map(point => point.memory);
-      systemChart.data.datasets[2].data = systemData.map(point => point.disk);
-      systemChart.update('none');
+        // Limit data points to keep the chart performant and readable (e.g., last 30 points)
+        const maxDataPoints = 30;
+        if (chart.data.labels.length > maxDataPoints) {
+            chart.data.labels.shift();
+            chart.data.datasets.forEach(dataset => {
+                dataset.data.shift();
+            });
+        }
+        
+        chart.update('none'); // Use 'none' for smooth real-time updates
     }
 
     function updateAttackAnalysis(data) {
@@ -436,55 +348,128 @@
 
         attackAnalysisChart.data.labels = protocols;
         attackAnalysisChart.data.datasets[0].data = counts;
-        attackAnalysisChart.update('none');
+        attackAnalysisChart.update();
       }
     }
 
     function addLogEntry(data) {
       const li = document.createElement("li");
       li.className = data.prediction === "attaque" ? "attack" : "normal";
-      
       const timestamp = new Date().toLocaleTimeString();
       const icon = data.prediction === "attaque" ? "🚨" : "✅";
       const status = data.prediction === "attaque" ? "BLOCKED" : "ALLOWED";
       
-      li.innerHTML = `
-        <strong>${timestamp}</strong> ${icon} 
-        <span style="color: #cbd5e1;">${data.proto?.toUpperCase() || 'UNKNOWN'}</span> / 
-        <span style="color: #cbd5e1;">${data.service || 'unknown'}</span> → 
-        <strong>${status}</strong>
-      `;
+      li.innerHTML = `<strong>${timestamp}</strong> ${icon} <span style="color: #cbd5e1;">${data.proto?.toUpperCase() || "UNKNOWN"}</span> / <span style="color: #cbd5e1;">${data.service || "unknown"}</span> → <strong>${status}</strong>`;
       
       logList.prepend(li);
-      
-      while (logList.children.length > maxLogEntries) {
+      if (logList.children.length > maxLogEntries) {
         logList.removeChild(logList.lastChild);
       }
-      
-      li.classList.add('pulse');
-      setTimeout(() => li.classList.remove('pulse'), 2000);
     }
 
-    // Socket event handlers
+    // --- Blocked IPs Functions ---
+    async function loadBlockedIPs() {
+      try {
+        const response = await fetch('/api/blocked-ips');
+        const data = await response.json();
+        
+        if (data.blocked_ips) {
+          displayBlockedIPs(data.blocked_ips);
+          blockedTotalSpan.textContent = data.total;
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des IPs bloquées:', error);
+      }
+    }
+
+    function displayBlockedIPs(blockedIPs) {
+      blockedIpsTbody.innerHTML = '';
+      
+      if (blockedIPs.length === 0) {
+        blockedIpsTable.style.display = 'none';
+        noBlockedIpsDiv.style.display = 'block';
+        return;
+      }
+      
+      blockedIpsTable.style.display = 'table';
+      noBlockedIpsDiv.style.display = 'none';
+      
+      blockedIPs.forEach(blockedIP => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="ip-address">${blockedIP.ip}</td>
+          <td class="block-date">${formatDate(blockedIP.timestamp)}</td>
+          <td class="block-reason">${blockedIP.reason}</td>
+          <td class="actions">
+            <button class="unblock-btn" onclick="unblockIP('${blockedIP.ip}')">
+              🔓 Débloquer
+            </button>
+          </td>
+        `;
+        blockedIpsTbody.appendChild(row);
+      });
+    }
+
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleString('fr-FR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+
+    async function unblockIP(ip) {
+      if (!confirm(`Êtes-vous sûr de vouloir débloquer l'IP ${ip} ?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/unblock-ip', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ ip: ip })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert(`IP ${ip} débloquée avec succès`);
+          loadBlockedIPs(); // Recharger la liste
+        } else {
+          alert(`Erreur: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Erreur lors du déblocage:', error);
+        alert('Erreur lors du déblocage de l\'IP');
+      }
+    }
+
+    // --- Socket Event Handlers ---
     socket.on("new_prediction", data => {
       totalPackets++;
+      const now = new Date();
       
+      // Find or create a data point for the current time
+      let dataPoint = timelineData.find(p => now.getTime() - p.time.getTime() < 10000); // Group by 10s intervals
+      if (!dataPoint) {
+          dataPoint = { time: now, normal: 0, attacks: 0 };
+          timelineData.push(dataPoint);
+      }
+
       if (data.prediction === "attaque") {
         attackCount++;
-        const currentMinute = new Date();
-        currentMinute.setSeconds(0, 0);
-        let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
-        if (dataPoint) {
-          dataPoint.attacks++;
-        }
+        dataPoint.attacks++;
+        // Recharger les IPs bloquées quand une nouvelle attaque est détectée
+        setTimeout(loadBlockedIPs, 1000);
       } else {
         normalCount++;
-        const currentMinute = new Date();
-        currentMinute.setSeconds(0, 0);
-        let dataPoint = timelineData.find(point => point.time.getTime() === currentMinute.getTime());
-        if (dataPoint) {
-          dataPoint.normal++;
-        }
+        dataPoint.normal++;
       }
 
       normalSpan.textContent = normalCount.toLocaleString();
@@ -494,7 +479,6 @@
       trafficChart.data.datasets[0].data = [normalCount, attackCount];
       trafficChart.update('none');
       
-      updateTimeline();
       updateAttackAnalysis(data);
       addLogEntry(data);
     });
@@ -506,42 +490,26 @@
       systemUptimeSpan.textContent = formatUptime(data.uptime);
       predictionsPerMinSpan.textContent = data.predictions_per_minute || 0;
 
+      // Call the corrected update function
       updateSystemChart(data);
     });
 
-    // Initialize timeline
-    function initializeTimeline() {
-      const now = new Date();
-      for (let i = 9; i >= 0; i--) {
-        const time = new Date(now.getTime() - i * 60000);
-        time.setSeconds(0, 0);
-        timelineData.push({ time, normal: 0, attacks: 0 });
-      }
-      updateTimeline();
-    }
+    // --- Event Listeners ---
+    refreshBlockedIpsBtn.addEventListener('click', loadBlockedIPs);
 
-    // Simulate traffic for demonstration
-    function simulateTraffic() {
-      const protocols = ['tcp', 'udp', 'icmp'];
-      const services = ['http', 'https', 'ftp', 'smtp', 'dns'];
-      const flags = ['SF', 'REJ', 'S0', 'S1'];
-      
-      setInterval(() => {
-        const isAttack = Math.random() < 0.15;
-        const data = {
-          prediction: isAttack ? 'attaque' : 'normal',
-          proto: protocols[Math.floor(Math.random() * protocols.length)],
-          service: services[Math.floor(Math.random() * services.length)],
-          flag: flags[Math.floor(Math.random() * flags.length)]
-        };
+    // --- Initialization ---
+    function initialize() {
+        // Set an interval to update the timeline chart smoothly
+        setInterval(updateTimeline, 2000);
         
-        socket.emit('new_prediction', data);
-      }, 2000 + Math.random() * 3000);
+        // Load blocked IPs on startup
+        loadBlockedIPs();
+        
+        // Refresh blocked IPs every 30 seconds
+        setInterval(loadBlockedIPs, 30000);
     }
 
-    // Initialize
-    initializeTimeline();
-    setTimeout(simulateTraffic, 2000);
+    initialize();
   </script>
 </body>
 </html>
